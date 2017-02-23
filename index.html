@@ -1,0 +1,851 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<title>.NET Core: Porting a Production Web Service</title>
+	<link rel="stylesheet" href="css/reveal.css">
+	<link rel="stylesheet" href="css/theme/black.css">
+	<!-- Theme used for syntax highlighting of code -->
+	<link rel="stylesheet" href="lib/css/zenburn.css">
+	<!-- Printing and PDF exports -->
+	<script>
+	var link = document.createElement( 'link' );
+	link.rel = 'stylesheet';
+	link.type = 'text/css';
+	link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+	document.getElementsByTagName( 'head' )[0].appendChild( link );
+	</script>
+	<style>
+	code {
+		tab-size: 4;
+	}
+	</style>
+</head>
+<body>
+
+	<!-- Presentation Start -->
+
+	<div class="reveal">
+
+		<div class="slides">
+
+			<section>
+				<h2>.NET Core:</h2>
+				<h3>Porting a Production Web Service</h3>
+				<p>
+					<small>Robert Hargreaves (<a href="http://twitter.com/robertharg">@robertharg</a>)</small>
+				</p>
+			</section>
+
+			<section>
+				<h2>Agenda</h2>
+				<p>
+					<ul>
+						<li>What is .NET Core?</li>
+						<li>Why migrate?</li>
+						<li>Migration approach</li>
+						<li>Building and testing</li>
+						<li>Hosting</li>
+					</ul>
+				</p>
+			</section>
+
+			<section>
+				<h1>What is .NET Core?</h1>
+			</section>
+
+			<section>
+				<h2>What is .NET Core?</h2>
+				<p>
+					Cross-platform, open-source managed code framework with <i>similarities</i> to the .NET Framework
+				</p>
+			</section>
+
+			<section>
+				<table>
+					<thead>
+						<tr>
+							<th>Concept</th>
+							<th>.NET Framework</th>
+							<th>.NET Core</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>OS</td>
+							<td>Windows</td>
+							<td>Windows, Linux, macOS</td>
+						</tr>
+						<tr>
+							<td>Runtime</td>
+							<td>CLR</td>
+							<td>CoreCLR</td>
+							<aside class="notes">RyuJIT</aside>
+						</tr>
+						<tr>
+							<td>Base Library</td>
+							<td>FCL, BCL</td>
+							<td>CoreFX</td>
+						</tr>
+						<tr>
+							<td>Web</td>
+							<td>ASP.NET &amp; IIS</td>
+							<td>ASP.NET Core</td>
+						</tr>
+						<tr>
+							<td>Entry point</td>
+							<td>EXEs, DLLs</td>
+							<td><pre>dotnet run myapp.dll</pre></td>
+						</tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section>
+				<h2>.NET Core does some things differently...</h2>
+				<p>
+						Reflection in .NET Framework:
+				</p>
+				<pre><code data-trim class="cs">
+					this.GetType().GetMembers()
+				</code></pre>
+				<p>
+						Reflection in .NET Core:
+				</p>
+				<pre><code data-trim class="cs">
+					this.GetType().GetTypeInfo().GetMembers()
+				</code></pre>
+			</section>
+
+			<section>
+				<img src="images/NET_Framework-Core_relationship.svg" />
+			</section>
+
+			<section>
+				<h2>.NET Standard</h2>
+				<p>
+					A set of APIs that all .NET platforms have to implement - unifies the .NET platforms
+				</p>
+			</section>
+
+			<section>
+				<img src="images/dotnet-tomorrow.png" />
+			</section>
+
+			<section>
+				<h2>.NET Standard 1.6</h2>
+				<p>
+					<ul>
+						<li>The current version - implemented by .NET Core 1.0</li>
+						<li>Not implemented by any .NET Framework version</li>
+					</ul>
+
+				</p>
+			</section>
+
+			<section>
+				<h2>.NET Standard 2.0</h2>
+				<p>
+					<ul>
+						<li>Doubles the number of APIs available</li>
+						<li>
+							Implemented by .NET Framework 4.6.1 and <br/>.NET Core vNext
+						</li>
+						<li>
+							Can reference .NET Framework 4.6.1 libraries via compatibility shim
+						</li>
+					</ul>
+				</p>
+			</section>
+
+			<section>
+				<h2>Targeting</h2>
+				<p>
+					<ul>
+						<li>Applications will target a .NET Core version</li>
+						<li>Class libraries target a .NET Standard version</li>
+					</ul>
+				</p>
+			</section>
+
+			<section>
+				<h2>ASP.NET Core</h2>
+				<p>Re-architecture of ASP.NET, built on .NET Core</p>
+			</section>
+
+			<section>
+				<h2>ASP.NET Core</h2>
+				<ul>
+					<li>
+						Next generation of ASP.NET
+					</li>
+					<li>Supports MVC and Web APIs</li>
+					<li>Faster performing than ASP.NET</li>
+					<li>Self-hosted web server - Kestrel</li>
+					<li>Supports OWIN middleware &amp; servers</li>
+					<li>
+						Can run on .NET Framework
+					</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>ASP.NET Core Example</h2>
+				<pre><code data-trim style="font-size: 0.7em; line-height: 1.3em;">
+					using System.IO;
+					using Microsoft.AspNetCore.Hosting;
+
+					namespace Web.DNCore
+					{
+						public class Program
+						{
+							public static void Main(string[] args)
+							{
+								var host = new WebHostBuilder()
+									.UseKestrel()
+									.UseContentRoot(Directory.GetCurrentDirectory())
+									.UseStartup&lt;Startup&gt;()
+									.UseUrls("http://*:5000")
+									.Build();
+								host.Run();
+							}
+						}
+					}
+				</code></pre>
+			</section>
+
+			<section>
+				<h2>ASP.NET Core Gotchas</h2>
+				<ul>
+					<li><code>HttpContext.Current</code> is null.</li>
+					<li>IIS modules unsupported. Use middleware instead.</li>
+					<li>Acceptance testing requires self-hosted app to be running (duh...)</li>
+					<li><code>Web.config</code> no longer used.</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>ASP.NET Core Configuration</h2>
+				<ul>
+					<li>Strongly-typed configuration providers for JSON/XML/INI.</li>
+					<li>Environmental variables can override settings.</li>
+					<li>Concept of environments (Development, Production).</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>Why use .NET Core over<br />
+					.NET Framework?</h2>
+				<ul>
+					<li>Cross platform</li>
+					<li>Open source, free</li>
+					<li>Separation of runtime and operating system</li>
+					<li>Cleaner, simpler deployment</li>
+					<li>CLI-style development</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>Why migrate to .NET Core?</h2>
+				<ul>
+					<li>Prefer open source over Microsoft licensing models</li>
+					<li>Substantial existing .NET investment in platform</li>
+					<li>Prefer incremental changes over re-writes</li>
+					<li>Developers &amp; Ops already use Linux</li>
+					<li>Standardised Continuous Delivery pipeline</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>Why not to use .NET Core?</h2>
+				<ul>
+					<li>App uses COM, WCF, WPF, WinForms</li>
+					<li>Lack of library/dependency support</li>
+					<li>Lack of tooling support</li>
+					<li>App is a Monolith</li>
+				</ul>
+			</section>
+
+			<section>
+				<h1>Migration approach</h1>
+			</section>
+
+			<section>
+				<h2>Innovation Time</h2>
+				<ul>
+					<li>2 days/month to work on tech innovation</li>
+					<li>Projects can be self-selected or suggested by another team member</li>
+					<li>Attempting to migrate an app to .NET Core was a suggested project</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>Migration Candidates</h2>
+				<p>
+					<ul>
+						<li>Console or Web API Microservice</li>
+						<li>Interactions are HTTP-based (XML, JSON)</li>
+						<li>Database engine support available</li>
+						<li>Comprehensive test suite (unit, integration, acceptance)</li>
+					</ul>
+				</p>
+			</section>
+
+			<section>
+				<h2>"Streaming Auth"</h2>
+				<p>
+					A microservice responsible for the authorising of media streaming requests.
+				</p>
+			</section>
+
+			<section>
+				<h2>Features</h2>
+					<ul>
+						<li>Nancy HTTP API</li>
+						<li>No database</li>
+						<li>Well tested (unit, integration, acceptance tests)</li>
+						<li>Deployed globally in AWS</li>
+					</ul>
+			</section>
+
+			<section>
+				<h2>Preparing projects for</br/> .NET Core</h2>
+				<ol>
+					<li>Identify the projects to migrate</li>
+					<li>Check high-level dependency compatibility</li>
+					<li>Target .NET Framework 4.6.1</li>
+					<li>Upgrade dependencies</li>
+					<li>Compile &amp; Test</li>
+					<li>Run .NET Portability Analyzer</li>
+				</ol>
+			</section>
+
+			<section>
+				<h2>.NET Portability Analyzer</h2>
+				<p>
+					.NET Portability Analyzer (VSIX and Console) can be used to identify code that will not compile in .NET Core
+				</p>
+			</section>
+
+			<section>
+				<h2>.NET Portability Analyzer</h2>
+				<p>
+					<img src="images/apiport.png" />
+				</p>
+			</section>
+
+  		<section>
+				<h2>Maintain Compatibility</h2>
+				<p>Code should support both .NET Framework
+					<br /><i>and</i> .NET Core</p>
+			</section>
+
+			<section>
+				<img src="images/boboani.gif" width="75%"/>
+			</section>
+
+			<section>
+				<h2>Dual Platform Support</h2>
+				<ul>
+					<li>Increased feedback from compiler and tests for both targets</li>
+					<li>.NET Core support can reside in production branch/repository</li>
+					<li>Changes can benefit production code right away</li>
+					<li>Target code for specific platform using compiler pragmas</li>
+				</ul>
+			</section>
+
+			<section>
+				<h1>Project Structure</h1>
+			</section>
+
+			<section>
+				<h2>.NET Framework</h2>
+				<img src="images/project-dotnetfx.png" width="75%" />
+			</section>
+
+			<section>
+				<h2>.NET Core (Visual Studio 2015)</h2>
+				<img src="images/project-xproj.png" width="75%" />
+				<aside>This changes in Visual Studio 2017 RC (I'll get to that...)</aside>
+			</section>
+
+			<section>
+				<h2>Shared Code; Seperate Projects</h2>
+				<img src="images/project-seperate.png" width="75%" />
+			</section>
+
+			<section>
+				<h2>.NET Core (Visual Studio 2017)</h2>
+				<ul>
+					<li><code>project.json</code> and <code>*.xproj</code> replaced by <code>*.csproj</code></li>
+					<li>NuGet packages can either be referenced by <code>packages.config</code> or as <code>PackageReference</code> in <code>*.csproj</code></li>
+					<li>Still recommend seperate projects!</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>DEMO</h2>
+				<aside class="notes">
+					<ul>
+						<li>Show project names - solution explorer</li>
+						<li>Show project.json</li>
+						<li>Show pragmas and target selection</li>
+						<li>Show resharper tests</li>
+					</ul>
+				</aside>
+			</section>
+
+			<section>
+				<h1>The Migration</h1>
+			</section>
+
+			<section>
+				<h2>Upgrade Application</h2>
+				<p>
+					<ul>
+						<li>Target .NET Framework 4.6.1 (was 4.0)</li>
+						<li>Upgrade dependencies:
+							<ul>
+								<li>Nancy 0.13 &rarr; pre-2.0</li>
+								<li>NUnit 2.6 &rarr; 3.5</li>
+							</ul></li>
+						</ul>
+					</p>
+				</section>
+
+				<section>
+					<h2>NUnit</h2>
+					<p>
+						<ul>
+							<li>NUnit currently only supported by Resharper in Visual Studio 2015</li>
+							<li>Fairly unstable</li>
+							<li>
+								As was Visual Studio Test Explorer...
+							</li>
+							<li>
+								<code>dotnet test</code> was more stable
+							</li>
+							<li>
+								Currently no support for NUnit in Visual Studio 2017 RC
+							</li>
+						</p>
+					</section>
+
+					<section>
+						<h2>RhinoMocks</h2>
+						<p>
+							<ul>
+								<li>No support for .NET Core</li>
+								<li>Could not run unit tests in .NET Core :(</li>
+								<li>
+									Moq and NSubstitute supported
+								</li>
+							</p>
+						</section>
+
+					<section>
+						<h2>Unofficial Support</h2>
+						<p>
+							<ul>
+								<li>Forks exist to add .NET Core support:</li>
+								<ul>
+									<li>log4net</li>
+									<li>DataDog Statsd Client</li>
+									<li>Nancy StructureMap Bootstrapper</li>
+								</ul>
+								<br/>
+								<li>Referenced libraries in project.json would not work outside Visual Studio (for some reason). Had to add package to NuGet...</li>
+							</p>
+						</section>
+
+						<section>
+							<h2>Unsupported Libraries</h2>
+							<p>
+								<ul>
+									<li>Enyim MemcachedClient (work in progress)</li>
+									<li>No caching :(</li>
+									<li>
+										Redis support in ServiceStack.Redis
+									</li>
+								</ul>
+							</p>
+						</section>
+
+						<section>
+							<h2>log4net</h2>
+							<pre><code data-trim class="cs">
+								private static readonly ILog Logger =
+									LogManager.GetLogger(
+										MethodBase.GetCurrentMethod().DeclaringType);
+							</code></pre>
+							<p>
+								Changed to:
+							</p>
+							<pre><code data-trim class="cs">
+								private static readonly ILog Logger =
+									LogManager.GetLogger(typeof(Foo));
+							</code></pre>
+							<p>
+								Supported in .NET Standard 2.0
+							</p>
+						</section>
+
+						<section>
+							<h3>Missing Synchronous Methods</h3>
+							<pre><code data-trim class="cs">
+								var request = (HttpWebRequest) WebRequest.Create(url);
+								var requestStream = request.GetRequestStream();
+							</code></pre>
+							<p>
+								Cowboy fix:
+							</p>
+							<pre><code data-trim class="cs">
+								var requestStream = request.GetRequestStreamAsync().Result;
+							</code></pre>
+							<ul>
+								<li>
+									Potential for deadlocks
+								</li>
+								<li>
+									Thrown <code>WebException</code> now wrapped in an <code>AggregateException</code>!
+								</li>
+								<li>
+									Better to use <code>async/await</code> through-out
+								</li>
+								<li>
+									Supported in .NET Standard 2.0
+								</li>
+							</ul>
+						</section>
+
+											<section>
+												<h3>Missing Members</h3>
+												<pre><code data-trim class="cs">
+													var request = (HttpWebRequest) WebRequest.Create(url);
+													request.Timeout = 5000;
+													request.AllowAutoRedirect = false;
+													request.UserAgent = "custom-user-agent";
+													request.AddRange(0, 500);
+												</code></pre>
+												<ul>
+													<li>
+															Refactored to use <code>HttpClient</code>
+													</li>
+													<li>
+															Supported in .NET Standard 2.0
+													</li>
+												</ul>
+											</code></pre>
+										</section>
+
+						<section>
+							<h2>No AppSettings</h2>
+							<pre><code data-trim class="cs">
+								var foo = ConfigurationManager.AppSettings["Foo"];
+							</code></pre>
+							<p>
+								Changed to:
+							</p>
+							<pre><code data-trim class="cs">
+								var foo = StreamingAuthConfiguration.Foo;
+							</code></pre>
+						</section>
+
+						<section>
+							<h2>No HttpContext</h2>
+							<pre><code data-trim class="cs">
+								// set
+								HttpContext.Current.Items["foo"] = "bar";
+								// get
+								var bar = HttpContext.Current.Items["foo"];
+							</code></pre>
+							<p>
+								Changed to:
+							</p>
+							<pre><code data-trim class="cs">
+								AsyncLocal&lt;string&gt; foo = new AsyncLocal&lt;string&gt;();
+								// set
+								foo.Value = "bar";
+								// get
+								var bar = foo.Value;
+							</code></pre>
+						</section>
+
+						<section>
+							<h3>Filesystem</h3>
+							<ul>
+<li>
+	Use <code data-trim class="cs">Path.Combine()</code>, not <code>@"\"</code>
+</li>
+<li>
+	Use <code>Path.GetTempPath()</code></code>
+</li>
+<li>
+	Use <code>Environment.NewLine</code>, not <code>"\r\n"</code>
+</li>
+						</section>
+
+
+					<section>
+						<h3>Time Zone Fun!</h3>
+						<p>
+							Buggy code:
+						</p>
+						<pre><code data-trim class="cs">
+							new DateTime(1970, 1, 1).ToUniversalTime()
+						</code></pre>
+						<p>
+							Windows:
+						</p>
+						<pre><code data-trim class="cs">
+							// 01/01/1970 00:00:00</code></pre>
+						<p>
+							Ubuntu 16.04:
+						</p>
+						<pre><code data-trim class="cs">
+							// 31/12/1969 23:00:00</code></pre>
+					</section>
+
+					<section>
+						<h1>Hosting</h1>
+					</section>
+
+					<section>
+						<h2>Hosting</h2>
+						<ul>
+							<li>Node.js apps currently deployed using AWS ECS (Elastic Container Service)</li>
+							<li>Aim is to deploy .NET Core apps as Docker containers</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Docker</h2>
+						<ul>
+							<li>Microsoft provide .NET Core docker container base images:</li>
+							<pre><code data-trim>
+							FROM microsoft/dotnet
+							</code></pre><pre><code data-trim>
+							FROM microsoft/dotnet:1.1-sdk-projectjson
+							</code></pre>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Example Dockerfile</h2>
+						<p>
+							<pre><code data-trim class="dockerfile">
+FROM microsoft/dotnet:1.1-sdk-projectjson
+WORKDIR /dotnetapp
+COPY . .
+RUN dotnet restore src/Domain.DNCore src/Web.DNCore
+RUN dotnet build src/Domain.DNCore src/Web.DNCore
+
+WORKDIR /dotnetapp/src/Web.DNCore
+RUN dotnet publish -c Release -o out
+EXPOSE 5000
+WORKDIR /dotnetapp/src/Web.DNCore/out
+ENTRYPOINT ["dotnet", "Web.DNCore.dll"]
+							</code></pre>
+<pre><code data-trim class="bash">
+							$ docker build -t streaming-auth .
+							$ docker run -p 5000:5000 -d streaming-auth
+					</code></pre>
+						</p>
+					</section>
+
+					<section>
+						<h2>Hosting</h2>
+						<ul>
+							<li>In production, Kestrel should be fronted by a Reverse Proxy.</li>
+							<li>On Windows, we'd use IIS. On Linux we'll use NGINX.</li>
+							<li>Docker Compose can be used to front our app with NGINX.</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>NGINX</h2>
+						<ul>
+							<li>Node.js apps currently deployed using AWS ECS (Elastic Container Service)</li>
+							<li>Aim is to deploy .NET Core apps as Docker containers</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Docker Compose Example</h2>
+						<p>
+						<pre><code data-trim class="yaml" style="font-size: 0.7em; line-height: 1.2em;">
+version: '2'
+services:
+  streaming-auth:
+    container_name: streaming-auth
+    build: .
+    ports:
+      - "5000:5000"
+  nginx:
+    container_name: nginx
+    image: nginx
+    ports:
+      - "8080:8080"
+    links:
+      - streaming-auth
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+					</code></pre>
+					</p>
+					</section>
+
+					<section>
+						<h2>NGINX Configuration Example</h2>
+						<p>
+						<pre><code data-trim class="nginx" style="font-size: 0.8em; line-height: 1.3em;">
+							server {
+								listen 8080;
+
+								location / {
+									proxy_pass http://streaming-auth:5000;
+									proxy_set_header Host $host:$server_port;
+									proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+								}
+							}
+					</code></pre>
+					</p>
+					</section>
+
+					<section>
+						<h1>Demo</h1>
+					</section>
+
+					<section>
+						<h1>Conclusions</h1>
+					</section>
+
+					<section>
+						<h2>Red Flags</h2>
+						<ul>
+							<li>
+								Incomplete support for NUnit in VS 2017 RC
+							</li>
+							<li>
+								Incomplete support for Resharper &amp; .NET Core tests in VS 2017 RC
+							</li>
+							<li>
+								IDE inconsistency &amp; instability
+							</li>
+							<li>
+								Final *.csproj format still TBD
+							</li>
+							<li>
+								No RhinoMocks = no unit tests in .NET Core :(
+							</li>
+							<li>
+								Memcached support not there yet (Redis?)
+							</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Red Flags Solved...</h2>
+						<ul>
+							<li>
+								Migrate AppSettings to new ASP.NET Core Configuration</li>
+							<li>
+								Log to STDOUT and forward Docker logs to Logstash
+							</li>
+							<li>
+								Integrate into CD pipline</li>
+							<li>
+								A-B test code against Linux stack
+							</li>
+							<li>
+								Gradually ramp-up traffic to Linux stack
+							</li>
+						</ul>
+					</section>
+
+					<section>
+						<h2>Cause for Optimism</h2>
+						<ul>
+							<li>
+								Library support is growing all the time
+							</li>
+							<li>
+								With .NET Standard 2.0, porting is a use case
+							</li>
+							<li>
+								IDE and tooling issues will be fixed
+							</li>
+							<li>
+								It works! (more or less)
+							</li>
+							<li>
+								Have a go!
+							</li>
+						</ul>
+					</section>
+
+					<section style="text-align:left">
+						<h1>Thank You!</h2>
+						<h3>Any questions?</h3>
+					</section>
+
+					<section style="text-align:left">
+						<h3>References</h3>
+						<ul>
+							<li>
+							Introducing .NET Standard
+							 <a href="https://blogs.msdn.microsoft.com/dotnet/2016/09/26/introducing-net-standard/">
+								 https://blogs.msdn.microsoft.com/dotnet/2016/
+								 09/26/introducing-net-standard/
+							 </a>
+							</li>
+							<li>
+								Porting to .NET Core from .NET Framework
+							 <a href="https://docs.microsoft.com/en-us/dotnet/articles/core/porting/index">
+								 https://docs.microsoft.com/en-us/dotnet/articles/core/porting/index
+							 </a>
+							</li>
+
+						</ul>
+					</section>
+
+					<section style="text-align:left">
+						<h3>References</h3>
+						<ul>
+							<li>
+								Developing Libraries with Cross Platform Tools
+							 <a href="https://docs.microsoft.com/en-us/dotnet/articles/core/tutorials/libraries">
+								 https://docs.microsoft.com/en-us/dotnet/articles/core/tutorials/libraries
+							 </a>
+							</li>
+							<li>
+								Hosting .NET Core on Linux with Docker - A Noob's Guide
+							 <a href="http://blog.scottlogic.com/2016/09/05/hosting-netcore-on-linux-with-docker.html">
+								 http://blog.scottlogic.com/2016/09/05/hosting-netcore-on-linux-with-docker.html
+							 </a>
+							</li>
+						</ul>
+					</section>
+
+				</div>
+
+			</div>
+
+			<!-- Reveal.js -->
+
+			<script src="lib/js/head.min.js"></script>
+			<script src="js/reveal.js"></script>
+			<script>
+			Reveal.initialize({
+				history: true,
+				transition: 'none',
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				]
+			});
+			</script>
+		</body>
+		</html>
